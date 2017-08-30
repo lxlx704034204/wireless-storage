@@ -528,7 +528,22 @@ public class SmbListActivity extends ListActivity{
 			try {
 				Log.d(SmbOpApi.TAG,"SearchTask");
 				Log.d(SmbOpApi.TAG,"SearchTask params[0]" + params[0]);
-				SmbFile smbFile = new SmbFile(params[0]);
+				
+				SmbFile smbFile = new SmbFile(params[0]);//if密码有特殊字符时需用 下面的构造方法
+				
+//					UniAddress dc = null;
+//					try {
+//						dc = UniAddress.getByName(ip);
+//					} catch (UnknownHostException e) {
+//						Log.i(TAG, "--doInBackground-2-e.toString(): " + e.toString()); //
+//					}
+//					NtlmPasswordAuthentication auth = new NtlmPasswordAuthentication( "liangxin:1qaz@WSX");
+//					SmbSession.logon(dc, auth);
+//					
+//					SmbFile smbFile = new SmbFile(params[0], auth);//密码有特殊字符时需用这个构造方法，注意，这句是关键，SmbFile 不支持特殊字符的密码，因此在这里放置
+
+				
+				
 				ArrayList<SmbFile> dirList = new ArrayList<SmbFile>();
 				ArrayList<SmbFile> fileList = new ArrayList<SmbFile>();
 	
