@@ -63,7 +63,7 @@ public class SmbActivity extends BaseActivity {
 
         accessSDCard();
 
-        ip = "192.168.1.253";
+        ip = "192.168.1.253";  //192.168.1.253  192.168.23.1
 //        ip = getIntent().getStringExtra("url");
 //        Log.i(TAG, "--onCreateView-1-传入的ip :   " + ip);    // 192.168.23.1
 
@@ -201,7 +201,8 @@ public class SmbActivity extends BaseActivity {
     private String getSmbRoot(String ip) {
 
         //合并后 不需要密码验证！
-        return prefix + SmbOpApi.getAuthbyUrl(this, ip) + "@" + ip + "/";
+//      return prefix + SmbOpApi.getAuthbyUrl(this, ip) + "@" + ip + "/";
+        return prefix + "liangxin:1qaz@WSX" + "@" + ip + "/";  // "admin@mycloud.com:admin"  //"liangxin:1qaz@WSX"
         //    "smb://"            admin:admin              @
 //      return prefix + "@" + ip + "/";
     }
@@ -502,7 +503,7 @@ public class SmbActivity extends BaseActivity {
 					} catch (UnknownHostException e) {
 						Log.i(TAG, "--doInBackground-2-e.toString(): " + e.toString()); //
 					}
-					NtlmPasswordAuthentication auth = new NtlmPasswordAuthentication( "liangxin:1qaz@WSX");
+					NtlmPasswordAuthentication auth = new NtlmPasswordAuthentication( "liangxin:1qaz@WSX");//"liangxin:1qaz@WSX"
 					SmbSession.logon(dc, auth);
 
 					SmbFile smbFile = new SmbFile(params[0], auth);
@@ -899,6 +900,12 @@ public class SmbActivity extends BaseActivity {
         lv.setAdapter(dlistadapter);
 
         return view;
+    }
+
+    @Override
+    protected void onClickLeft() {
+        super.onClickLeft();
+        finish();
     }
 
     @Override
