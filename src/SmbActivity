@@ -1,0 +1,1004 @@
+package com.broadmobi.mycloud.activity;
+
+import android.Manifest;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.ProgressDialog;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.drawable.Drawable;
+import android.net.Uri;
+import android.net.wifi.WifiManager;
+import android.os.AsyncTask;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
+import android.text.format.Formatter;
+import android.util.Log;
+import android.view.ContextMenu;
+import android.view.KeyEvent;
+import android.view.LayoutInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.widget.AdapterView;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import com.broadmobi.mycloud.R;
+import com.broadmobi.mycloud.base.BaseActivity;
+import com.broadmobi.mycloud.interationUtils.com.uninet.wirelessstore.GeneralUtil;
+import com.broadmobi.mycloud.interationUtils.com.uninet.wirelessstore.IconifiedText;
+import com.broadmobi.mycloud.interationUtils.com.uninet.wirelessstore.IconifiedTextListAdapter;
+import com.broadmobi.mycloud.interationUtils.com.uninet.wirelessstore.MimeUtils;
+import com.broadmobi.mycloud.interationUtils.com.uninet.wirelessstore.SmbOpApi;
+import com.broadmobi.mycloud.interationUtils.com.uninet.wirelessstore.StreamService;
+import com.broadmobi.mycloud.interationUtils.jcifs.UniAddress;
+import com.broadmobi.mycloud.interationUtils.jcifs.smb.NtlmPasswordAuthentication;
+import com.broadmobi.mycloud.interationUtils.jcifs.smb.SmbException;
+import com.broadmobi.mycloud.interationUtils.jcifs.smb.SmbFile;
+import com.broadmobi.mycloud.interationUtils.jcifs.smb.SmbSession;
+import com.broadmobi.mycloud.utils.customDialog.ShowFileDialog;
+
+import java.io.File;
+import java.net.MalformedURLException;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+
+public class SmbActivity extends BaseActivity {
+
+    //192.168.1.253
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+
+        accessSDCard();
+
+        ip = "192.168.1.253";
+//        ip = getIntent().getStringExtra("url");
+//        Log.i(TAG, "--onCreateView-1-传入的ip :   " + ip);    // 192.168.23.1
+
+        CurrPath = root = getSmbRoot(ip);
+        Log.i(TAG, "--onCreateView-2-CurrPath = root :   " + root);
+        //smb://admin:admin@192.168.61.2/ <-------获取当前 设配router的 root
+
+
+//        if (getGateWay().equals("")) {
+//            Toast.makeText(this, getString(R.string.no_wifi), Toast.LENGTH_LONG).show();//当前无WiFi环境！请检查wifi
+//            this.finish();
+//        } else {
+//            default_url = getGateWay(); //  实时 从wifi环境 获取 url
+//            Log.i(TAG, "--onCreateView-1-default_url() :   " + default_url);    // 192.168.23.1
+//            CurrPath = root = getSmbRoot(default_url);//ip
+//            Log.i(TAG, "--onCreateView-2-CurrPath = root :   " + root);
+//            //smb://admin:admin@192.168.61.2/ <-------获取当前 设配router的 root
+//            //smb://@192.168.23.1/
+//        }
+
+        setContentView(R.layout.activity_smb);
+
+//        SmbActivity.this.applyTv.setVisibility(View.GONE);
+
+        setTitle("SMB");//getString(R.string.backup_album)
+        showLeftTv(true);
+//        this.getActivity().setTitle("");
+        Intent intent = new Intent(this, StreamService.class);
+        this.startService(intent);
+
+        //合并后 不需要密码验证！        "admin:admin"
+       GeneralUtil.SetAuth(SmbOpApi.getAuthbyUrl(this, ip));
+
+        mUIUpdate = new Handler() {
+            @Override
+            public void handleMessage(final Message msg) {
+                switch (msg.what) {
+
+                    case SmbOpApi.TOAST_MSG_SHOW2:
+
+                        if (!"".equals(msg.obj) && null != msg.obj) {
+                            if (msg.obj.equals("share root")) {//当前路径为share根路径
+                                layoutLl.setVisibility(View.GONE);
+
+                            }
+                            if (msg.obj.equals("no share root")) {//当前路径不为share根路径
+                                layoutLl.setVisibility(View.VISIBLE);
+                            }
+
+                        }
+                        break;
+
+                    case SmbOpApi.TOAST_MSG_SHOW:
+                        // searchFile(CurrPath); // ☆一、 方法 !
+                        Toast.makeText(SmbActivity.this, (String) msg.obj, Toast.LENGTH_LONG).show();
+                        break;
+
+                    case SmbOpApi.TOAST_MSG_NEW_FOLDER:
+
+                        if (!"".equals(msg.obj) && null != msg.obj) {
+
+
+                            if (msg.obj.equals("0xC00000A2.") ||
+                                    msg.obj.equals("Cannot create a file when that file already exists.") ||
+                                    msg.obj.toString().substring(msg.obj.toString().length() - 2, msg.obj.toString().length() - 1).equals("\\")) {
+                                Toast.makeText(SmbActivity.this, getString(R.string.new_folder_notNull), Toast.LENGTH_LONG).show();//
+                            }
+                            if (msg.obj.equals("The network name cannot be found.")) {
+                                Toast.makeText(SmbActivity.this, getString(R.string.rootPath_unallow_newFolder), Toast.LENGTH_LONG).show();//    router根路径下不允许新建文件夹！
+                            }
+
+                        }
+                        break;
+
+                    case SmbOpApi.TOAST_MSG_PASTE:
+
+                        if (!"".equals(msg.obj) && null != msg.obj) {
+                            if (msg.obj.equals("Source and destination paths overlap.")) {
+                                Toast.makeText(SmbActivity.this, getString(R.string.unallow_re_paste), Toast.LENGTH_LONG).show();//  当前目录已存在该文件，不允许重复粘贴！
+                            } else if (msg.obj.equals("The network name cannot be found.")) {
+                                Toast.makeText(SmbActivity.this, getString(R.string.rootPath_unallow_paste), Toast.LENGTH_LONG).show();// router根路径下不允许粘贴文件！
+                            }
+                        }
+                        break;
+
+                    case SmbOpApi.TOAST_MSG_downLoad:
+                        if (!"".equals(msg.obj) && null != msg.obj) {
+                            if (msg.obj.toString().substring(msg.obj.toString().length() - 10, msg.obj.toString().length() - 1).equals("directory")) {
+                                Toast.makeText(SmbActivity.this, getString(R.string.select_uploadFile), Toast.LENGTH_LONG).show();// select_uploadFile  请您先选择需要上传的文件！
+                            } else if (msg.obj.equals("The network name cannot be found.")) {
+                                Toast.makeText(SmbActivity.this, getString(R.string.rootPath_unallow_upload), Toast.LENGTH_LONG).show(); //   "router根路径下不允许上传文件！"
+                            }
+                        }
+                        break;
+                    case SmbOpApi.PROGRESS_MSG_SHOW: //进度条 完毕后， 应该继续显示 当前路径(CurrPath) 下的 router的item列表！
+                        if (SmbOpApi.pdialog != null) {
+                            SmbOpApi.pdialog.dismiss();
+                            SmbOpApi.pdialog = null;
+                            searchFile(CurrPath); // ☆一、 方法 ! (开始 预览 router中的 当前path 的 view) 【继续显示 当前路径(CurrPath) 下的 router的item列表！】
+                        }
+                        break;
+
+
+                }
+                super.handleMessage(msg);
+            }
+        };
+
+        searchFile(root); // ☆一、 方法 ! (开始 预览 router的  根路径) 【一打开 app,就是 预览 router列表  根路径root 的 界面 ！！】  [router的  根路径： "share/"]
+
+        Button_new_folder = (TextView) this.findViewById(R.id.new_folder);
+        Button_paste = (TextView) this.findViewById(R.id.paste);
+        Button_upload = (TextView) this.findViewById(R.id.upload);
+        //Button Button_more = (Button) this.findViewById(R.id.more);
+
+
+        Button_upload.setOnClickListener(setOnClick);
+        Button_paste.setOnClickListener(setOnClick);
+        Button_new_folder.setOnClickListener(setOnClick);
+
+
+        layoutLl = (LinearLayout) this.findViewById(R.id.layout_ll);
+        lvv = (ListView) this.findViewById(R.id.list);
+
+        //inner2
+        //给View 的子控件绑定ContextMenu 菜单，长按此子控件就会弹出ContextMenu菜单:
+        //  registerForContextMenu(b);
+        //getListView().setOnCreateContextMenuListener(this);		// OnCreateContextMenu 0.1
+        lvv.setOnCreateContextMenuListener(longClickListener);
+
+        lvv.setOnItemClickListener(lvvOnItemClick);
+        
+    }
+
+    private String getSmbRoot(String ip) {
+
+        //合并后 不需要密码验证！
+        return prefix + SmbOpApi.getAuthbyUrl(this, ip) + "@" + ip + "/";
+        //    "smb://"            admin:admin              @
+//      return prefix + "@" + ip + "/";
+    }
+
+    private int getIconbyFile(String filepath) {
+        int icon = R.drawable.ic_launcher;
+        SmbFile file = SmbOpApi.getSmbFileByUrl(filepath);
+
+        if (SmbOpApi.isDir(file)) {
+            icon = R.drawable.folder;
+        } else {
+//          原写法MimeUtils.getIconbyType(MimeUtils.getmimetype(MimeUtils.getextension(file.getName())))
+            icon = MimeUtils.customIcon(file.getName());
+            Log.i("type", "file.getName()-: " + file.getName());
+
+        }
+        return icon;
+    }
+
+    private void setAdapter() {
+        listItemAdapter = new IconifiedTextListAdapter(SmbActivity.this);
+        listItemAdapter.setListItems(alist); // 将 alist数据源  转化成 view !!
+
+        lvv.setAdapter(listItemAdapter);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+
+        accessSDCard();
+
+
+        setAdapter();
+    }
+
+    private String getGateWay() {  //  实时 从wifi环境 获取 url(ip)
+        WifiManager wifiManager = (WifiManager) this.getSystemService(Context.WIFI_SERVICE);
+        return Formatter.formatIpAddress(wifiManager.getDhcpInfo().gateway);
+    }
+
+    public View.OnCreateContextMenuListener longClickListener = new View.OnCreateContextMenuListener() {
+
+        @Override
+        public void onCreateContextMenu(ContextMenu menu, View v, ContextMenu.ContextMenuInfo menuInfo) {
+            AdapterView.AdapterContextMenuInfo info = (AdapterView.AdapterContextMenuInfo) menuInfo;
+
+            //inner3
+            IconifiedTextListAdapter adapter = listItemAdapter;
+            SelectedItem = (IconifiedText) adapter.getItem(info.position);
+
+            if (SelectedItem.getText().equals("返回上一级") || SelectedItem.getText().equals("share/")) { // 如果 你单击选择的 是  “返回上一级” 文件夹/目录 或者 是根路径  设置 长按失效
+                return;
+            }
+
+            menu.setHeaderTitle(getResources().getString(R.string.options)); //getString(R.string.options);
+            menu.add(0, MENU_RENAME_ID, 0, getString(R.string.file_rename)); //
+            menu.add(0, MENU_DELETE_ID, 0, getString(R.string.file_delete));
+            menu.add(0, MENU_COPY_ID, 0, getString(R.string.file_copy));
+            menu.add(0, MENU_CUT_ID, 0, getString(R.string.file_cut));
+
+//            menu.add(0, MENU_PAST_ID, 0, getString(android.R.string.paste));
+//		      menu.add(0, MENU_DOWNLOAD_ID, 0, "下载");
+
+            // super.onCreateContextMenu(menu, v, menuInfo); // 此句可要可不要，但是如果采用匿名内部类的话 不需要此句！！
+        }
+    };
+
+
+    //9.2
+    // view上  点选item项 的 选择  Override方法（底层方法）
+    @Override
+    public boolean onContextItemSelected(MenuItem item) {  // 长按菜单响应函数
+        //System.out.println("onContextItemSelected------>"+item.getItemId());
+//        SmbFragment.this.getActivity().showDialog(item.getItemId());//长按事件  选中的当前id ！！
+        // 调用 void showDialog(int id)--->boolean showDialog(id, null)
+        // --->ManagedDialog 与 [9.8]Dialog createDialog(Integer dialogId, Bundle state, Bundle args) 与 void onPrepareDialog(id, md.mDialog, args);
+
+
+        switch (item.getItemId()) {
+
+            case MENU_RENAME_ID:
+
+                LayoutInflater inflater = LayoutInflater.from(SmbActivity.this);
+                View view = inflater.inflate(R.layout.dialog_new_folder, null);
+                final EditText et2 = (EditText) view.findViewById(R.id.foldername);
+
+                new AlertDialog.Builder(SmbActivity.this)
+                        .setTitle(getString(R.string.file_rename))
+                        .setView(view)
+                        .setPositiveButton(android.R.string.ok,
+                                new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialog,
+                                                        int which) {
+                                        Message msg = mUIUpdate.obtainMessage(SmbOpApi.TOAST_MSG_SHOW);
+
+                                        msg.obj = SmbOpApi.rename(SmbOpApi.getSmbFileByUrl(SelectedItem.getPath()),
+                                                SmbOpApi.getSmbFileByUrl(CurrPath + et2.getText().toString()));
+                                        msg.sendToTarget();
+                                        searchFile(CurrPath); // ☆一、 方法 !　
+                                        SelectedItem = null;
+                                    }
+                                })
+                        .setNegativeButton(android.R.string.cancel,
+                                new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialog,
+                                                        int which) {
+                                        // Cancel should not do anything.
+                                    }
+                                }).create().show();
+
+                break;
+            case MENU_DELETE_ID:
+                new AlertDialog.Builder(SmbActivity.this)
+                        .setTitle(getString(R.string.ok))
+                        .setMessage(getString(R.string.make_sure) + SelectedItem.getText() + " ?")//getString(R.string.make_sure)
+                        .setPositiveButton(android.R.string.ok,
+                                new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialog, int which) {
+                                        Message msg = mUIUpdate.obtainMessage(SmbOpApi.TOAST_MSG_SHOW);
+
+                                        Log.d("tttt", SelectedItem.getPath() + "<---你选择的路径  1");//☆☆☆smb://admin:admin@192.168.1.2/share/ (当前目录【非父及目录！！】)
+                                        Log.d("tttt", CurrPath + "<---测试当前路径  2");              //smb://admin:admin@192.168.1.2/
+
+                                        //smb://admin:admin@192.168.1.2/share/aaa/
+                                        //smb://admin:admin@192.168.1.2/share/
+
+                                        if (SelectedItem.getPath().equals(CurrPath + "share/")) {
+                                            msg.obj = R.string.undelete_root; // "不能删除router的根路径！"
+                                        } else {
+                                            msg.obj = SmbOpApi.delete(SmbOpApi.getSmbFileByUrl(SelectedItem.getPath()));
+                                            //ArrayList<SmbFile> selectedFileList = new ArrayList<SmbFile>();
+
+                                        }
+
+                                        msg.sendToTarget();
+                                        searchFile(CurrPath); // ☆一、 方法 !
+                                        SelectedItem = null;
+                                    }
+                                })
+                        .setNegativeButton(android.R.string.cancel,
+                                new DialogInterface.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dialog,
+                                                        int which) {
+                                        // Cancel should not do anything.
+                                    }
+                                }).create().show();
+                break;
+            case MENU_COPY_ID:
+                SmbOpApi.copy(mUIUpdate, SmbOpApi.TOAST_MSG_SHOW,
+                        SmbOpApi.getSmbFileByUrl(SelectedItem.getPath()));
+                SelectedItem = null;
+                break;
+            case MENU_CUT_ID:
+                SmbOpApi.cut(mUIUpdate, SmbOpApi.TOAST_MSG_SHOW,
+                        SmbOpApi.getSmbFileByUrl(SelectedItem.getPath()));
+                SelectedItem = null;
+                break;
+
+
+        }
+
+        return super.onContextItemSelected(item);
+    }
+
+
+    public AdapterView.OnItemClickListener lvvOnItemClick = new AdapterView.OnItemClickListener() {
+
+        @Override
+        public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+            IconifiedText it = alist.get(position);    // router中的 当前	IconifiedText 对象
+            String path = it.getPath();
+            String tmpPaht = CurrPath;
+            CurrPath = path;
+
+            if (it.isFile()) { // 如果是文件则 打开
+                openfile(it);   // 在 断缓存目录 中 查找是否 存在  当前点击的item(第position项),如果有则直接打开利用(同时  匹配 正确 的 图标)，如果没有则 直接 从 router上 下载 ！！
+                CurrPath = tmpPaht;
+            } else {     // 如果是文件夹则 继续浏览router
+                searchFile(path); // ☆一、 方法 !
+            }
+        }
+    };
+
+
+    // 在 断缓存目录 中 查找是否 存在  当前点击的item(第position项),如果有则直接打开利用(同时  匹配 正确 的 图标)，如果没有则 直接 从 router上 下载 ！！
+    private void openfile(final IconifiedText it) {
+        String mimetype = "";
+
+
+        //  根据 文件名的 后缀 给予 相应的  Icon ！
+        mimetype = MimeUtils.getmimetype(MimeUtils.getextension(it.getText()));
+        // SyncLock sycl = new SyncLock();
+
+        File dir = new File(SmbOpApi.tmpdir);
+        if (!dir.exists()) {
+            dir.mkdirs();//创建自定义 目录
+        }
+
+        // 获取 缓存目录
+        final String targetFileString = SmbOpApi.tmpdir + it.getText(); // it: 第position项 (// 该文件/目录 的 完整 路径 的 name（标示！）)！
+
+        Log.i(TAG, SmbOpApi.tmpdir + "<----缓存目录1");
+        Log.i(TAG, targetFileString + "<----缓存目录2");
+
+        //先判断缓存目录有没有该文件，有则直接打开（ 在 缓存中(选择过的历史记录中) 寻找）
+        final File file = new File(targetFileString);// 通过 缓存路径的string，获取到对应的file  //加 final ???
+        if (file.exists() && it.getSize().equalsIgnoreCase(file.length() + "")) { // 如果存在
+            try {
+
+                Intent intent = new Intent(android.content.Intent.ACTION_VIEW);// 选择 打开方式 ACTION_GET_CONTENT(只是选择打开方式，不会打开次文件！！)
+                Uri uri1 = Uri.fromFile(file);
+                // 给 uri1 匹配 对应的(正确的) 图标 ！
+                intent.setDataAndType(uri1, mimetype);// 将uri1  也转化为 mimetype格式（和file的名字的 type保持一致！）
+                this.startActivity(intent);
+            } catch (Exception e) {
+                Toast.makeText(SmbActivity.this, getResources().getString(R.string.can_not_open), Toast.LENGTH_SHORT).show();
+                Log.i("cacheError", e.toString());
+            }
+
+
+        } else { // 如果缓存中不存在 ，则 直接 从 router上 下载 ！！
+
+            SmbOpApi.cachefile(SmbActivity.this,
+                    mUIUpdate,
+                    SmbOpApi.TOAST_MSG_SHOW,
+                    SmbOpApi.getSmbFileByUrl(it.getPath()),
+                    mimetype/* , sycl */);
+
+
+        }
+    }
+
+    //9.5
+    //@Override
+    public void onBackPressed() {
+        if (!CurrPath.equals(root)) {
+            searchFile(SmbOpApi.getSmbFileByUrl(CurrPath).getParent().toString()); // ☆一、 方法 !
+        } else {
+            SmbActivity.this.finish();
+        }
+    }
+
+    //@Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        //super.onKeyDown(keyCode, event);
+
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (this.getFragmentManager().getBackStackEntryCount() == 0) { //返回堆栈的总数目(从管理器中得到Fragment当前已加入Fragment回退栈中的fragment的数量。)
+                SmbActivity.this.finish();
+                return true;
+            }
+        }
+        return false;
+
+    }
+
+
+//9.6 : 分为 一、二、两个部分:
+
+    // 一、  预览 router中的  Item ， 如果需要浏览的话，先从 Cache中 查找，cache中有则直接打开，cache中没有则 直接从 router中下载  到native 进行浏览 ！
+    private void searchFile(String path) { // ☆一、 方法 !
+
+
+        if (task == null || task.getStatus().equals(AsyncTask.Status.FINISHED)) { // 如果 ☆一、 方法 !中的 异步 类的 对象task 为null || task任务 处于 "完成" 的Status
+            new SearchTask().execute(path);                                      // 则 执行 router中的  Item 的浏览  程序  ！：
+        }
+    }
+
+    class SearchTask extends AsyncTask<String, Void, Void> {
+        ArrayList<IconifiedText> item = new ArrayList<IconifiedText>(); // 一、 所有 文件 和 文件夹 的集合 （不包含 “返回上一级” 文件 ！！）
+        private ProgressDialog dialog = null;
+
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            dialog = new ProgressDialog(SmbActivity.this);
+            dialog.setMessage(getString(R.string.loading));
+            dialog.setCanceledOnTouchOutside(false);
+            dialog.show();
+        }
+
+        @Override
+        protected Void doInBackground(String... params) {
+            try {
+                //192.168.1.253
+                Log.i(TAG, "--doInBackground-1-SearchTask params[0]: " + params[0]);  //  smb://admin:admin@192.168.61.2/ share/ (点击选择 share/ )
+                                                                                      //  smb://@192.168.23.1/
+                if (!params[0].equals("/")) { // 如果 你点击的 不是   router根目录（share/ 的 父及目录）
+
+					UniAddress dc = null;
+					try {
+						dc = UniAddress.getByName(ip);
+					} catch (UnknownHostException e) {
+						Log.i(TAG, "--doInBackground-2-e.toString(): " + e.toString()); //
+					}
+					NtlmPasswordAuthentication auth = new NtlmPasswordAuthentication( "liangxin:1qaz@WSX");
+					SmbSession.logon(dc, auth);
+
+					SmbFile smbFile = new SmbFile(params[0], auth);
+
+//                    SmbFile smbFile = new SmbFile(params[0]);  // 吧  它 转化为  SmbFile对象
+
+
+
+                    ArrayList<SmbFile> dirList = new ArrayList<SmbFile>();
+                    ArrayList<SmbFile> fileList = new ArrayList<SmbFile>();
+                    Log.i(TAG, "--doInBackground-1.1-smbFile: " + smbFile);  //
+                    setCurrPath(smbFile);  // 设定当前 目录
+
+                    SmbFile[] fs = smbFile.listFiles(); // 返回的是 完整的路径      的数组   此方法 runtime了
+
+                                   Log.i(TAG, "--doInBackground-2-params[0]-->fs.length: " + fs); //null
+                    if(fs != null) Log.i(TAG, "--doInBackground-3-params[0]-->fs.length: " + fs.length);
+
+                    for (SmbFile f : fs) {   //  遍历 该 路径下的  所有子项（即 ：对文件 与 文件夹  进行筛选）：
+                        if (f.isDirectory()) {
+                            dirList.add(f);
+                        } else {
+                            fileList.add(f);
+                        }
+                    }
+
+                    dirList.addAll(fileList);
+
+                    Log.i(TAG, "--doInBackground-3-params[0]-->dirList.size(): " + dirList.size());
+
+                    for (SmbFile f : dirList) {
+                        String filePath = f.getPath();
+                        String fileName = f.getName();
+                        boolean isFile = f.isFile();
+                        String fileSize = Formatter.formatFileSize(SmbActivity.this, f.length()); //  文件的 话，需要 计算 内容的 length ！
+                        Drawable dab = getResources().getDrawable(getIconbyFile(filePath));  // 设置的 图标
+
+
+//                        int sTime = FileGetDate(f.getPath());
+//
+//
+//                        SimpleDateFormat sdf = new SimpleDateFormat("MMM dd yyyy | KK:mm a");
+//                       String createTime = (sdf.format(f.lastModified())).toString();
+
+
+                        if (!f.isHidden()) { // 不显示隐藏文件 ？？？？？？？？？？？？？？？？？？？？？？？
+                            if (isFile) { // 如果是 文件，则 除了基本的属性之外，还需要 标明 该文件 内容的的 长度     fileSize ！！
+                                item.add(new IconifiedText(fileName, filePath, isFile, fileSize, dab, false, f.length() + ""));
+                            } else {     // 				    文件夹  	不需要 标明 该文件的 长度     fileSize ！！
+                                item.add(new IconifiedText(fileName, filePath, isFile, dab, false, f.length() + ""));
+                            }
+                        }
+                    }
+                }
+
+            } catch (MalformedURLException e) {
+                Log.d(TAG, "MalformedURLException = " + e);
+            }catch (SmbException e) {
+                Log.d(TAG, "SmbException = " + e);
+                //com.broadmobi.mycloud.interationUtils.jcifs.smb.SmbAuthException: Logon failure: unknown user name or bad password
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Void result) {
+            super.onPostExecute(result);
+
+            alist.clear();
+
+            Message msgg = mUIUpdate.obtainMessage(SmbOpApi.TOAST_MSG_SHOW2);
+            if (!isRoot()) {
+
+                msgg.obj = "no share root";
+
+                String up = SmbOpApi.getSmbFileByUrl(CurrPath).getParent().toString();
+                alist.add(new IconifiedText("返回上一级", up, false, getResources().getDrawable(R.drawable.folder), false, ""));
+            } else {
+                Log.d("kk", "root  or  not ");
+//                    layoutLll.setVisibility(View.GONE);
+
+
+                msgg.obj = "share root";
+
+            }
+            msgg.sendToTarget();
+
+            for (IconifiedText i : item) {
+                alist.add(i);
+            }
+
+            Log.d(TAG, alist.size() + "<----alist.size()");
+
+            dialog.cancel();
+            showtotal(SmbOpApi.getSmbFileByUrl(CurrPath));// 获取 CurrPath路径的 SmbFile对象 ！ // 然后 获取该 CurrPath路径的SmbFile对象   的容量
+            listItemAdapter.notifyDataSetChanged();// notifyDataSetChanged()只会重绘当前可见区域； notifyDataSetInvalidated() 会重绘控件（还原到初始状态）
+        }
+    }
+
+    private boolean isRoot() { // 检查 是否为 router 根路径 ！！
+        return CurrPath.equals(root);
+    }
+
+    private void setCurrPath(SmbFile sbf) {
+        if (!sbf.toString().equals(root)) {// 若 当前 文件或文件夹 不是router根路径"
+            CurrPath = sbf.toString();        // 才  设置为 当前 router目录路径！
+        } else {
+            CurrPath = root;            // 否则 设置 当前本地目录路径  为 router根路径"
+        }
+    }
+
+    // 获取某 路径的SmbFile对象   的容量
+    private void showtotal(SmbFile disk) {
+        String total = SmbOpApi.getDiskFreeSpace(SmbActivity.this, disk);
+        TextView tv = (TextView) SmbActivity.this.findViewById(R.id.volume_tip);
+        tv.setText(total);
+    }
+
+    
+    // 二： 浏览 本地  Item ，可提供本地文件 upload（上传） 到router 中
+    private void browsNativeFile(String path) { // ☆二、 方法 !
+        if (task == null || task.getStatus().equals(AsyncTask.Status.FINISHED)) {  // 如果 ☆一、 方法 !中的 异步 类的 对象task 为null || task任务 处于 "完成" 的Status
+            new BrowsLocalFileTask().execute(path);                               // 则 执行 浏览 本地  Item 的浏览  程序  ！：
+        }
+    }
+
+    class BrowsLocalFileTask extends AsyncTask<String, Void, Void> {
+        ArrayList<IconifiedText> item = new ArrayList<IconifiedText>(); // 二 、 所有 文件 和 文件夹 的集合 （不包含 “返回上一级” 文件 ！！）
+        private ProgressDialog dialog = null;
+
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            dialog = new ProgressDialog(SmbActivity.this);
+            dialog.setMessage(getString(R.string.loading));
+            dialog.setCanceledOnTouchOutside(false);
+            dialog.show();
+        }
+
+        @Override
+        protected Void doInBackground(String... params) {
+
+            File lf = new File(params[0]);
+            ArrayList<File> dlist = new ArrayList<File>();//  文件夹（目录）list
+            ArrayList<File> flist = new ArrayList<File>();//  文件 list
+            setNativeCurrPath(lf);
+
+            //完整的路径      的数组
+            File[] fs = lf.listFiles(); // ① lf.list() 	        返回 如[TEMP, Windows]    ：只是返回路径的name 的数组
+            // ②lf.listFiles() 返回 如[c:\TEMP, c:\Windows] ：返回的是 完整的路径      的数组
+            for (File f : fs) {
+                if (f.canWrite() && f.canRead()) { //前提是可读 可写 ！
+                    if (f.isDirectory()) { // 如果 它是 文件夹（目录）
+                        dlist.add(f);
+                    } else {                // 如果 它是 文件
+                        flist.add(f);
+                    }
+                }
+            }
+
+            dlist.addAll(flist); // 整合 所有的目录和文件 到  dlist集合对象中！！
+
+            for (File f : dlist) { // 遍历这个  整合了 所有的目录和文件 的  dlist集合  ！
+                String filePath = f.getPath(); // 该文件/目录 的 完整路径
+                String fileName = f.getName(); // 该文件/目录 的name
+
+                boolean isFile = f.isFile(); //是否为 文件
+                String fileSize = Formatter.formatFileSize(SmbActivity.this, f.length()); // 从底层 获取到 该文件中的内容的 长度（文件夹名称没必要 获取 长度！！）
+                Drawable dab = getResources().getDrawable(getIconbyNativeFile(filePath));// 该文件/目录 的name 对应的 iconicity（图标）
+                if (isFile) { // 如果是 文件，则 除了基本的属性之外，还需要 标明 该文件 内容的的 长度     fileSize ！！
+                    item.add(new IconifiedText(fileName, filePath, isFile, fileSize, dab, false, f.length() + ""));
+                    //																		  //f.length():该文件/目录 的 完整路径 的 length,返回类型为long !!
+                } else {      // 				    文件夹  	不需要 标明 该文件的 长度     fileSize ！！
+                    item.add(new IconifiedText(fileName, filePath, isFile, dab, false, f.length() + ""));
+                    //														   false标示 非本地文件/目录 （表示是 router中的 文件/目录）
+                }
+            }
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Void result) {
+            super.onPostExecute(result);
+
+            nativelist.clear();        // 清空 本地 目录集合
+            if (!isNativeRoot()) {
+                String up = new File(NativeCurrPath).getParent();// NativeCurrPath: // NativeCurrPath: 存放你下载/上传文件  的文件夹中！
+
+                //  1.1 本地 目录集合 add 名叫“返回上一级”的folder
+                //			   new 一个 最上面的  “返回上一级”样子的  folder！
+                nativelist.add(new IconifiedText("返回上一级",        //它的名字
+                        up,        //它的路径（比当前目录/文件 高一级的目录[最高级别的 那个目录！]）
+                        false,        // isFile = false (标示 既不是文件 也不是文件夹)
+                        getResources().getDrawable(R.drawable.folder), // 文件夹 图标
+                        false,        // 非本地文件/目录 （表示是 router中的 文件/目录）
+                        "")            // 该文件/目录 的 完整路径 的 length ( 此路径 为null !)
+                );
+            }
+
+            for (IconifiedText i : item) {
+                //  1.2.本地 目录集合 add 所有的文件/目录
+                nativelist.add(i);
+            }
+
+            dialog.cancel();
+            dlistadapter.notifyDataSetChanged(); // notifyDataSetChanged()只会重绘当前可见区域； notifyDataSetInvalidated() 会重绘控件（还原到初始状态）
+        }
+
+    }
+    private boolean isNativeRoot() {    // 检查 是否为 本地 根路径"/storage"！！
+        return NativeCurrPath.equals(Environment.getExternalStorageDirectory().getPath());
+    }
+    private void setNativeCurrPath(File f) {
+        if (!f.toString().equals(Environment.getExternalStorageDirectory().getPath())) {    // 若 当前 文件或文件夹 不是本地根路径"/storage"
+            NativeCurrPath = f.toString();        // 才  设置为 当前 本地目录路径！
+        } else {
+            NativeCurrPath = Environment.getExternalStorageDirectory().getPath();        // 否则 设置 当前本地目录路径  为根路径"/storage"
+        }
+    }
+    //根据 文件名的 后缀 给予 本地item相应的  Icon ！ 是文件夹 则给予 文件夹的Icon!
+    private int getIconbyNativeFile(String filepath) {
+        int icon = R.drawable.ic_launcher;
+        File f = new File(filepath);
+
+        if (f.isDirectory()) { // 文件夹
+            icon = R.drawable.folder;
+        } else { // 文件
+            //根据 文件名的 后缀 给予 相应的  Icon ！
+            //getmimetype()通过对 传入的 文件后缀 操作， 返回(获取该 后缀的   类型type)
+//   原写法         icon = MimeUtils.getIconbyType(MimeUtils.getmimetype(MimeUtils.getextension(f.getName())));
+            icon = MimeUtils.customIcon(f.getName());//f.getName()可以获取这个文件名的字符串包括后缀名
+        }
+        return icon;
+    }
+
+//  自定义  onclick  !!:
+
+    private View.OnClickListener setOnClick = new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            switch (v.getId()) {
+                case R.id.new_folder:
+
+                    LayoutInflater inflater = LayoutInflater.from(SmbActivity.this);
+                    View view = inflater.inflate(R.layout.dialog_new_folder, null);
+//                    view = SetDialogListAdapter(SmbListActivity.this);
+
+                    final EditText et3 = (EditText) view.findViewById(R.id.foldername);
+
+                    new AlertDialog.Builder(SmbActivity.this)
+                            .setTitle(getString(R.string.new_folder))//getString(R.string.new_folder)
+                            .setView(view)
+                            .setPositiveButton(android.R.string.ok,
+                                    new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog, int which) {
+                                            SmbFile newfolder =
+                                                    SmbOpApi.getSmbFileByUrl((SelectedItem == null ? CurrPath : SelectedItem.getPath()) // SelectedItem.getPath()：(当前目录【非父及目录！！】)
+                                                            + et3.getText().toString());
+
+                                            //											what !!
+                                            Message msg = mUIUpdate.obtainMessage(SmbOpApi.TOAST_MSG_NEW_FOLDER);  // 创建 msg对象，准备 放入 并 send 消息
+                                            // 此类型(TOAST_MSG_SHOW) 的msg，当主线程 接收到 它的.obj 时 会 toast 出来 obj ! ☆☆☆☆☆
+                                            // 主线程 获取到 msg.what后，会根据what的类型[TOAST_MSG_SHOW或者PROGRESS_MSG_SHOW] 来 处理接下来的 程序：
+                                            // TOAST_MSG_SHOW则toast 出 obj ；PROGRESS_MSG_SHOW 则 close进度条，而后显示 listview的界面 ！
+
+                                            Log.i(TAG, "MENU_NEW_FOLDER_ID--上方！---   " + newfolder);
+                                            // 				  .mkdir()方法 会toast 成功 或 失败  ！！
+                                            msg.obj = SmbOpApi.mkdir(newfolder); //创建 名为“et3” 的 单一路径 文件夹
+                                            msg.sendToTarget();
+
+
+                                            searchFile(CurrPath); // 刷新 父级path(即 当前目录)
+                                            SelectedItem = null;
+                                        }
+                                    })
+                            .setNegativeButton(android.R.string.cancel,
+                                    new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog, int which) {
+
+                                        }
+                                    }).create().show();
+
+                    break;
+
+                case R.id.paste:
+
+
+                    if (mUIUpdate == null || CurrPath == null) {
+                        Log.d(TAG, "paste param error!");
+                        return;
+                    }
+                    if (SmbOpApi.CopyorCut_buffer == null) {
+                        Toast.makeText(SmbActivity.this, getString(R.string.select_pasteFile), Toast.LENGTH_LONG).show();// "Please seleted a file or folder first."
+                        return;
+                    }
+
+                    SmbOpApi.paste(
+                            SmbActivity.this,
+                            mUIUpdate,
+                            SmbOpApi.TOAST_MSG_SHOW,
+                            SmbOpApi.getSmbFileByUrl(CurrPath //SelectedItem.getPath()
+                                    + SmbOpApi.CopyorCut_buffer.getName()));
+                    SelectedItem = null;
+
+                    break;
+
+                case R.id.upload:
+
+
+                    browsNativeFile(Environment.getExternalStorageDirectory().getPath());  // 二、 方法 !  "/storage"
+                    View view2 = SetDialogListAdapter(SmbActivity.this);//手机内存列表界面
+
+                    new AlertDialog.Builder(SmbActivity.this)
+                            .setTitle(getString(R.string.select_uploadFileList))// 本地文件（请选择需要上传的文件.）
+                            .setView(view2)
+                            .setPositiveButton(android.R.string.ok,
+                                    new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog,
+                                                            int which) {
+//                                            /storage/emulated/0
+                                            Log.i(TAG, "NativeCurrPath: " + NativeCurrPath + "---" + Environment.getExternalStorageDirectory().getPath());
+                                            if (NativeCurrPath.equals(Environment.getExternalStorageDirectory().getPath())) {
+
+                                                Toast.makeText(SmbActivity.this, getResources().getString(R.string.path_is_null), Toast.LENGTH_LONG).show();
+
+                                                Log.i("uuu", "SelectedItem.getPath()-1-: " + SelectedItem);
+                                                return;
+                                            }
+
+                                            File f = new File(NativeCurrPath);
+                                            String newFileNameString = "";
+
+                                            //暂时不对存在文件判断
+                                            newFileNameString = f.getName();
+
+                                            Log.i("uuu", "SelectedItem.getPath()-1-: " + SelectedItem);
+                                            Log.i("uuu", "CurrPath-2-: " + CurrPath);              //你选择进入的当前文件夹
+                                            Log.i("uuu", "NativeCurrPath-3-: " + NativeCurrPath);  //外置储存卡上 你选择的路径
+
+                                            SmbOpApi.upload(
+                                                    SmbActivity.this,
+                                                    mUIUpdate,
+                                                    SmbOpApi.TOAST_MSG_SHOW,
+                                                    SmbOpApi.getSmbFileByUrl((SelectedItem == null ? CurrPath
+                                                            : SelectedItem.getPath())
+                                                            + newFileNameString),
+                                                    NativeCurrPath);
+                                            SelectedItem = null;
+                                            dlistadapter.setSelectItem(-1);
+                                        }
+                                    })
+                            .setNegativeButton(android.R.string.cancel,
+                                    new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog,
+                                                            int which) {
+                                            NativeCurrPath = "";
+                                            dlistadapter.setSelectItem(-1);
+                                        }
+                                    }).create().show();
+
+                    break;
+            }
+        }
+    };
+    // 上传 、下载  的listview 适配器
+    private View SetDialogListAdapter(Context context) {
+        LayoutInflater inflater = LayoutInflater.from(context);
+        View view = inflater.inflate(R.layout.dialog_list, null);//R.layout.dialog_list // (从sdCard中)提供下载 的文件列表的 展示xml
+        ListView lv = (ListView) view.findViewById(R.id.file_list);
+
+        lv.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+
+            @Override
+            public void onItemClick(AdapterView<?> arg0, View arg1, int arg2,
+                                    long arg3) {
+                IconifiedText it = nativelist.get(arg2);//position,数据源的第position个数据
+
+                if (it.isFile()) {
+                    NativeCurrPath = it.getPath();
+                    dlistadapter.setSelectItem(arg2);
+                    dlistadapter.notifyDataSetInvalidated();//重绘控件（还原到初始状态）,//notifyDataSetChanged()只会重绘当前可见区域！
+                } else {
+                    browsNativeFile(it.getPath()); // ☆二、 方法 !
+                }
+            }
+        });
+
+        dlistadapter = new IconifiedTextListAdapter(SmbActivity.this);
+        dlistadapter.setListItems(nativelist);
+        lv.setAdapter(dlistadapter);
+
+        return view;
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+
+//        mainActivity.applyTv.setVisibility(View.VISIBLE);
+    }
+
+    public void accessSDCard() {
+        if (Build.VERSION.SDK_INT >= 23) {
+            int checkCallPhonePermission = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            if (checkCallPhonePermission != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_CODE_ASK_CALL_PHONE);
+                return;
+            } else {
+                //上面已经写好的拨号方法
+//                callDirectly(mobile);
+                Log.d(TAG, "OK 啦1111111");
+            }
+        } else {
+            //上面已经写好的拨号方法
+//            callDirectly(mobile);
+            Log.d(TAG, "OK 啦222222222");
+        }
+    }
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        switch (requestCode) {
+            case REQUEST_CODE_ASK_CALL_PHONE:
+                if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Permission Granted
+//                    callDirectly(mobile);
+                    Log.d(TAG, "OK 啦33333333");
+                } else {
+                    // Permission Denied
+                    Log.d(TAG, " Denied--0000000000000");
+                }
+                break;
+            default:
+                super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+    }
+
+    public static final int REQUEST_CODE_ASK_CALL_PHONE = 20;
+
+
+
+    private String TAG = "SmbActivity";
+
+    LinearLayout layoutLl;
+    ListView lvv;
+
+    TextView Button_new_folder, Button_paste, Button_upload;
+
+    private static String default_url = "192.168.1.253";//ip地址
+    private String prefix = "smb://";
+    private String ip = "";
+    private String root = "/";
+    private String CurrPath = "";
+    private String NativeCurrPath = "";
+    private IconifiedText SelectedItem = null;
+
+    public static final int REQUEST_CODE_UPLOAD = 1;
+    public static final int REQUEST_CODE_DOWNLOAD = 2;
+    public static final int REQUEST_CODE_BAK_DIR_SETTING = 3;
+    public static int c = 0;
+    private Handler mUIUpdate;
+
+    private static final int MENU_RENAME_ID = 3;
+    private static final int MENU_DELETE_ID = 4;
+    private static final int MENU_COPY_ID = 5;
+    private static final int MENU_CUT_ID = 6;
+    private static final int MENU_PAST_ID = 7;
+    private static final int MENU_DOWNLOAD_ID = 8;
+    private static final int MENU_UPLOAD_ID = 9;
+    private static final int MENU_NEW_FOLDER_ID = 10;
+    private static final int MENU_SETTING_ID = 11;
+
+
+    private IconifiedTextListAdapter listItemAdapter = null;
+    private IconifiedTextListAdapter dlistadapter = null;
+    private SearchTask task = null;
+    private ArrayList<IconifiedText> alist = new ArrayList<IconifiedText>();
+    private ArrayList<IconifiedText> nativelist = new ArrayList<IconifiedText>();
+
+    //                                              smb://admin:admin    @192.168.61.2/ <-------获取当前 设配router的 root
+
+    private ShowFileDialog showFileDialog;
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
