@@ -45,7 +45,7 @@ public class MainActivity extends Activity {
         auth = ((EditText)findViewById(R.id.ed_user)).getText().toString()
         		+":" + ((EditText)findViewById(R.id.ed_passwd)).getText().toString();
         Log.d(SmbOpApi.TAG,"Login info: " + auth);
-        return auth;
+        return auth; 192.168.1.253 //  liangxin:1qaz@WSX
     }
     
 	Handler progresshandler =new Handler(){
@@ -154,6 +154,7 @@ public class MainActivity extends Activity {
 			@Override
 			public void run() {
 				try{
+					//				     192.168.1.253  liangxin:1qaz@WSX
 					SmbOpApi.login(getApplicationContext(),default_url,user_passwd);
 		            msg.what = PROGRESS_MSG_SHOW;
 					gotolist();
